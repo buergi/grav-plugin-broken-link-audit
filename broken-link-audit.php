@@ -56,9 +56,9 @@ class BrokenLinkAuditPlugin extends Plugin
         return require __DIR__ . '/vendor/autoload.php';
     }
 
-  /**
-   * Initialize plugin.
-   */
+    /**
+     * Initialize plugin.
+     */
     public function onPluginsInitialized()
     {
         if ($this->isAdmin()) {
@@ -68,6 +68,7 @@ class BrokenLinkAuditPlugin extends Plugin
                     'onAdminMenu'           => ['onAdminMenu', 0],
                     'onAdminAfterSave'      => ['onAdminAfterSave', 0],
                     'onAdminTaskExecute'    => ['onAdminTaskExecute', 0],
+                    'onTwigSiteVariables'   => ['onTwigAdminVariables', 0],
                     'onTwigTemplatePaths'   => ['onTwigAdminTemplatePaths', 0],
                     'onTwigLoader'          => ['addAdminTwigTemplates', 0],
                     'onGetPageTemplates'    => ['onGetPageTemplates', 0],
@@ -78,9 +79,17 @@ class BrokenLinkAuditPlugin extends Plugin
         return;
     }
 
-  /**
-   * Add navigation item to the admin plugin
-   */
+    /**
+     * Set some twig vars and load CSS/JS assets for admin
+     */
+    public function onTwigAdminVariables(): void
+    {
+        $this->grav['assets']->addJs('plugin://broken-link-audit/assets/broken-link-audit.js', ['group' => 'bottom']);
+    }
+
+    /**
+     * Add navigation item to the admin plugin
+     */
     public function onAdminMenu(): void
     {
         // Set title of the admin page.
@@ -100,7 +109,7 @@ class BrokenLinkAuditPlugin extends Plugin
         ];
 
         $this->grav['twig']->plugins_quick_tray['Broken Link Audit'] = [
-            'authorize' => 'taskReindexTNTSearch', //todo: fix this
+            'authorize' => 'rescanBrokenLinkAudit', //todo: fix this
             'hint' => 'Reindexs the site for broken links',
             'class' => 'brokenLinkAudit-rescan', //todo: fix this
             'icon' => 'fa-chain-broken'
@@ -121,7 +130,7 @@ class BrokenLinkAuditPlugin extends Plugin
     }
 
     /**
-     * Handle the ReScan task from the admin.
+     * Handle the ReScan task from the admin quick tray.
      * Todo: fix this.
      *
      * @param Event $e
@@ -233,7 +242,7 @@ class BrokenLinkAuditPlugin extends Plugin
     }
 
 
-    public static function scanPages(): void
+    public static function scanPages(): int
     {
         $auditor = new Auditor();
 
@@ -245,11 +254,14 @@ class BrokenLinkAuditPlugin extends Plugin
             $pages->enablePages();
         }
 
+        $i = 0;
         foreach ($pages->all() as $key => $page) {
             $auditor->scanPage($page);
+            $i++;
         }
 
         //$bad_links = $this->checkLinks($all_links, $inspection_level, $valid_routes);
+        return $i;
     }
 
     /**
@@ -378,7 +390,9 @@ class BrokenLinkAuditPlugin extends Plugin
 
     private static function rescanJob(): array
     {
-        $response = [];
+        $response = [true, "ok", ""];
+        $i = static::scanPages();
+        $response[1] = "Checked $i pages";
         return $response;
     }
 }

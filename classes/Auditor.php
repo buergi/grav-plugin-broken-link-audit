@@ -164,7 +164,7 @@ class Auditor
             // Get all links on page.
             $links = $this->findRawPageLinks($content);
             // Find bad links.
-            $bad_links = $links;
+            $bad_links = $this->checkLinks($page,$links);
             // Save bad links to db.
             $this->saveInvalidLinks($page->route(), $bad_links);
         } elseif ($inspection_level == 'rendered') {
@@ -243,7 +243,7 @@ class Auditor
             preg_match_all($page_pattern, $content, $matches);
 
             if (count($matches[0]) > 0) {
-                $links[$type] = $matches[0];
+                $links[$type] = $matches[2];
             }
         }
 
@@ -252,19 +252,64 @@ class Auditor
 
     private function rawInspectionPatterns(): array
     {
+        // these regexs contain weird recursive group patterns (?1) to
+        // also work in cases like [foo[bar])(th[i]s(page))
         return array(
-            'raw'               =>  '/(\[[^][]*+(?:(?R)[^][]*)*+\])(\([^)(]*+(?:(?R)[^)(]*)*+\))/',
+            // matches [foo](bar) and ![foo](bar)
+            //'raw'               =>  '/\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\(([^)(]*+(?:\((?2)\)[^)(]*)*+)\)/',
 
-            'page_relative'     =>  '/[^!](\[[^][]*+(?:(?R)[^][]*)*+\])\((?!http)[^\/].*\)/',
-            'page_absolute'     =>  '/[^!](\[[^][]*+(?:(?R)[^][]*)*+\])(\([^)(]\/*+(?:(?R)[^)(]*)*+\))/',
-            'page_remote'       =>  '/[^!](\[[^][]*+(?:(?R)[^][]*)*+\])(\([^)(]http*+(?:(?R)[^)(]*)*+\))/',
+            // matches [foo](bar) where bar does not start with /
+            'page_relative'     =>  '/(?<!!)\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?:.\/)?(?!\/|http:|https:|ftp:|mailto:|tel:)([^)(?#]*+(?:\((?2)\)[^)(?#]*)*+)(?:[\?#][^)(]*)?\)/',
+            // matches [foo](/bar)
+            'page_absolute'     =>  '/(?<!!)\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?=\/)([^)(]*+(?:\((?2)\)[^)(]*)*+)\)/',
+            // matches [foo](http://bar) and [foo](https://bar)
+            'page_remote'       =>  '/(?<!!)\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?=https?:\/\/)([^)(]*+(?:\((?2)\)[^)(]*)*+)\)/',
 
+            // matches [![foo](bar)](foo)
             'combined'          =>  '/\[!\[.*\]\(.*\)\]\(.*\)/',
 
-            'media_relative'    =>  '/\![[^!].*\]\((?!http)(?!user)(?!theme)(?!plugin)[^\/].*\)/',
-            'media_absolute'    =>  '/[^\[]!\[[^!].*\]\(\/.*\)/',
-            'media_remote'      =>  '/[^\[]!\[[^!].*\]\(http.*\)/',
+            // matches ![foo](bar) where bar does not start with, also matches ![foo](bar?abc) and ![foo](bar?abc "def") but only captures bar
+            'media_relative'     =>  '/!\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?:.\/)?(?!\/|http|user|theme|plugin)([^)(?#]*(?:\((?2)\)[^)(?#]*)*)(?:[\?#][^)(]*)?(?: "[^"]*"|(?<=[^"]))\)/',
+            // matches ![foo](/bar)
+            'media_absolute'     =>  '/!\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?=\/)([^)(]*+(?:\((?2)\)[^)(]*)*+)\)/',
+            // matches ![foo](http://bar) and [foo](https://bar)
+            'media_remote'       =>  '/!\[([^][]*+(?:\[(?1)\][^][]*)*+)\]\((?=https?:\/\/)([^)(]*+(?:\((?2)\)[^)(]*)*+)\)/',
 
         );
+    }
+
+    private function checkLinks($page, $links) : array
+    {
+        $pages = $this->grav['pages'];
+        if (method_exists($pages, 'enablePages')) {
+            $pages->enablePages();
+        }
+
+        $bad_links = array();
+        foreach ($links as $type => $paths) {
+            $bad_links[$type] = array();
+            foreach ($paths as $path) {
+                switch ($type) {
+                    case 'page_absolute':
+                        if(!$pages->find($path)) {
+                            $bad_links[$type][] = $path;
+                        }
+                        break;
+                    case 'page_relative':
+                        if(!$pages->find($page->route().'/'.$path)) {
+                            if(!$page->media()->get(urldecode($path))) {
+                                $bad_links[$type][] = $path;
+                            }
+                        }
+                        break;
+                    case 'media_relative':
+                        if(!$page->media()->get(urldecode($path))) {
+                            $bad_links[$type][] = $path;
+                        }
+                        break;
+                }
+            }
+        }
+        return $bad_links;
     }
 }

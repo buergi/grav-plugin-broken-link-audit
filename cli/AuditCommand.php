@@ -74,8 +74,8 @@ class AuditCommand extends ConsoleCommand
         
         // If "all" is set, run scan on all pages.
         if ($this->options['all']) {
-            BrokenLinkAuditPlugin::scanPages();
-            $greetings = $greetings . ' of all pages';
+            $i = BrokenLinkAuditPlugin::scanPages();
+            $greetings = $greetings . ' of all '.$i.' pages';
         }
 
         // finally we write to the output the greetings

@@ -49,6 +49,9 @@ There are two options, ```raw``` and ```rendered```.  Currently, only the raw in
 
 After installing the plugin, visit admin/broken-links (or click on the new Admin menu item).  The first time visiting the report will display a button
 
+Use it from commandline via
+bin/plugin broken-link-audit audit -a
+
 ## Known limitations
 
 - Anchor links within a markdown page are not checked.
