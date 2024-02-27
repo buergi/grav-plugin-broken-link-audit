@@ -248,6 +248,8 @@ class BrokenLinkAuditPlugin extends Plugin
 
         $grav = Grav::instance();
 
+        $auditor->clearUnresolvableLinks();
+
         /** @var Pages $pages */
         $pages = $grav['pages'];
         if (method_exists($pages, 'enablePages')) {

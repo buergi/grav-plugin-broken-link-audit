@@ -173,6 +173,28 @@ class Auditor
     }
 
     /**
+     * Removes all links from db which contain unresolvable $routes.
+     *
+     * @return void
+     */
+    public function clearUnresolvableLinks(): void
+    {
+        $pages = $this->grav['pages'];
+        if (method_exists($pages, 'enablePages')) {
+            $pages->enablePages();
+        }
+
+        $results = $this->pdo->select("per_route", [
+            "route",
+        ], null);
+        foreach ($results as $row) {
+          if(!$pages->find($row['route'])) {
+              $this->clearLinks($row['route']);
+          }
+        }
+    }
+
+    /**
      * Removes all links from db for $route.
      *
      * @param string $route
@@ -278,6 +300,29 @@ class Auditor
         );
     }
 
+    private function toAbsoluteUrl($base, $rel)
+    {
+        /* return if already absolute URL */
+        if (parse_url($rel, PHP_URL_SCHEME) != '') return $rel;
+
+        /* return if already absolute URL */
+        if ($rel[0]=='/') $abs = $rel.'/';
+        /* queries and anchors */
+        else if ($rel[0]=='#' || $rel[0]=='?') $abs = $base.$rel.'/';
+        /* dirty absolute URL */
+        else $abs = "$base/$rel/";
+
+        /* replace '//' or '/./' or '/foo/../' with '/' */
+        $re = array('#(/\.?/)#', '#/(?!\.\.)[^/]+/\.\./#');
+        for($n=1; $n>0; $abs=preg_replace($re, '/', $abs, -1, $n)) {}
+
+        /* strip trailing / */
+        $abs=preg_replace('#\/+$#', '', $abs);
+
+        /* absolute URL is ready! */
+        return $abs;
+    }
+
     private function checkLinks($page, $links) : array
     {
         $pages = $this->grav['pages'];
@@ -296,7 +341,8 @@ class Auditor
                         }
                         break;
                     case 'page_relative':
-                        if(!$pages->find($page->route().'/'.$path)) {
+                        $absUrl = $this->toAbsoluteUrl($page->route(), $path);
+                        if(!$pages->find($absUrl)) {
                             if(!$page->media()->get(urldecode($path))) {
                                 $bad_links[$type][] = $path;
                             }
